@@ -1,0 +1,49 @@
+steps:
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/fchoice-backend:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/fchoice-backend:latest'
+      - '.'
+
+  # Push to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/fchoice-backend'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'fchoice-backend'
+      - '--image=gcr.io/$PROJECT_ID/fchoice-backend:$BUILD_ID'
+      - '--region=asia-southeast1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--min-instances=2'
+      - '--max-instances=10'
+      - '--cpu=2'
+      - '--memory=2Gi'
+      - '--timeout=60'
+      - '--concurrency=80'
+      - '--set-secrets'
+      - 'DB_HOST=db_host:latest,DB_USER=db_user:latest,DB_PASS=db_pass:latest,DB_NAME=db_name:latest,API_URL=api_url:latest'
+      - '--set-env-vars=NODE_ENV=production,CORS_ORIGIN=*'
+      - '--add-cloudsql-instances=$_CLOUDSQL_INSTANCE'
+
+images:
+  - 'gcr.io/$PROJECT_ID/fchoice-backend:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/fchoice-backend:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+
+substitutions:
+  _CLOUDSQL_INSTANCE: 'fchoicetracker:asia-southeast1:fchoice-db'
