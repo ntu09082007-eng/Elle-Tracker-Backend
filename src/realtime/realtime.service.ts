@@ -8,14 +8,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Candidate } from '../candidate/candidate.entity';
 import { Category } from '../category/category.entity';
-import { Snapshot } from '../snapshot/snapshot.entity';
 
 @Injectable()
 export class RealtimeService {
   private readonly logger = new Logger('Realtime');
   private readonly apiUrl: string;
 
-  private readonly cachedData: any = {
+  private cachedData: any = {
     updatedAt: new Date().toISOString(),
     data: [],
     status: 'Fetching',
@@ -24,8 +23,6 @@ export class RealtimeService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    @InjectRepository(Snapshot)
-    private readonly snapshotRepository: Repository<Snapshot>,
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
     @InjectRepository(Candidate)
@@ -40,99 +37,67 @@ export class RealtimeService {
 
   @Cron(CronExpression.EVERY_10_SECONDS)
   async getVotes() {
-    this.logger.log('Fetching new votes from external API...');
-    // Lấy danh sách tất cả các category
-    const categories = await this.categoryRepository.find();
-
-    if (!categories || categories.length === 0) {
-      this.logger.warn('No categories found in database');
-      return { updatedAt: new Date().toISOString(), data: [] };
+    // 1. Kiểm tra biến môi trường
+    if (this.configService.get('ENABLE_CRON') !== 'true') {
+        return;
     }
+    
+    this.logger.log('🚀 Đang cào dữ liệu thực tế từ ELLE...');
 
     try {
-      const headers = {
-        Referer: this.configService.get<string>('API_REFERER') ?? '',
-        Cookie: this.configService.get<string>('API_COOKIE') ?? '',
-      };
+      // 2. Gọi API lấy HTML của ELLE
+      const response = await firstValueFrom(
+        this.httpService.get(this.apiUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+            'Referer': this.configService.get<string>('API_REFERER') ?? '',
+            'Cookie': this.configService.get<string>('API_COOKIE') ?? '',
+          },
+        }),
+      );
+      const html = response.data;
 
-      let allTransformedData: any[] = [];
+      // 3. Dùng Regex bóc tách dữ liệu (Xử lý cả dấu gạch chéo thoát chuỗi)
+      const regex = /\\"id\\":\\"([a-f0-9]+)\\",\\"kind\\":\\"celebrity\\",\\"name\\":\\"([^\\"]+)\\",.*?\\"voteCount\\":(\d+)/g;
+      const apiResults = new Map<string, number>();
+      let match;
 
-      // Gọi API cho từng category
-      for (const category of categories) {
-        this.logger.log(
-          `Fetching realtime votes for category: ${category.name} (${category.id})`,
-        );
-
-        const apiUrlWithCategory = `${this.apiUrl}&lstId=${category.id}`;
-
-        try {
-          const response = await firstValueFrom(
-            this.httpService.get(apiUrlWithCategory, {
-              headers,
-              responseType: 'json',
-            }),
-          );
-          const result = response.data;
-
-          if (!result.Success || !result.Data) {
-            this.logger.warn(
-              `API returned unsuccessful response or no data for category ${category.id}`,
-            );
-            continue;
-          }
-
-          // Transform the API data to the desired format
-          const transformedData = await Promise.all(
-            result.Data.map(async (item) => {
-              const candidateId = item.m;
-              const totalVotes = item.list?.[0]?.v || 0;
-
-              // Fetch candidate from database to get name and category
-              const candidate = await this.candidateRepository.findOne({
-                where: { id: candidateId },
-                relations: ['category'],
-              });
-
-              if (!candidate) {
-                return null;
-              }
-
-              return {
-                id: candidate.id,
-                name: candidate.name,
-                categoryId: candidate.categoryId,
-                categoryName: candidate.category?.name || '',
-                totalVotes: totalVotes,
-              };
-            }),
-          );
-
-          // Filter out null values (candidates not found in DB)
-          const filteredData = transformedData.filter((item) => item !== null);
-          allTransformedData = [...allTransformedData, ...filteredData];
-        } catch (categoryError) {
-          this.logger.error(
-            `Failed to fetch realtime votes for category ${category.id}:`,
-            categoryError,
-          );
-        }
+      while ((match = regex.exec(html)) !== null) {
+        apiResults.set(match[1], parseInt(match[3]));
       }
 
-      const payload = {
+      // 4. Lấy danh sách Candidate từ DB
+      const allCandidates = await this.candidateRepository.find({
+        relations: ['category'],
+      });
+
+      // 5. Khớp dữ liệu (Đã sửa lỗi TypeScript bằng cách ép kiểu String)
+      const transformedData = allCandidates.map((candidate) => {
+        // Ép kiểu ID về string để so khớp với dữ liệu ELLE
+        const candIdStr = String(candidate.id);
+        const liveVotes = apiResults.get(candIdStr) || 0;
+        
+        return {
+          id: candidate.id,
+          name: candidate.name,
+          categoryId: candidate.categoryId,
+          categoryName: candidate.category?.name || 'ELLE',
+          totalVotes: liveVotes,
+        };
+      });
+
+      this.cachedData = {
         updatedAt: new Date().toISOString(),
-        data: allTransformedData,
+        data: transformedData,
+        status: 'Success',
       };
 
-      this.cachedData.updatedAt = payload.updatedAt;
-      this.cachedData.data = payload.data;
-      this.cachedData.status = 'Success';
-      this.logger.log(
-        'Successfully updated cached votes data at ' + payload.updatedAt,
-      );
+      this.logger.log(`✅ Đã khớp dữ liệu cho ${transformedData.length} nhân vật.`);
+      return this.cachedData;
 
-      return payload;
-    } catch (error) {
-      this.logger.error('Error fetching votes from external API', error);
+    } catch (error: any) {
+      this.logger.error('❌ Lỗi cào dữ liệu:', error.message);
+      this.cachedData.status = 'Error';
     }
   }
 }
