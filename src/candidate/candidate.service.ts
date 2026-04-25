@@ -2,9 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Candidate } from './candidate.entity';
 import { Repository } from 'typeorm';
-import { CreateCandidateDto } from './dto/create-candidate.dto';
-import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { Category } from '../category/category.entity';
+import { CreateCandidateDto } from './dto/create-candidate.dto';
 
 @Injectable()
 export class CandidateService {
@@ -20,11 +19,14 @@ export class CandidateService {
     return this.candidateRepository.find();
   }
 
-  async findOne(id: number): Promise<Candidate> {
+  // 🔥 LỆNH XUẤT SỐ VOTE: Ghi thẳng vào cột total_votes của candidate
+  async updateVotes(id: string, votes: number): Promise<void> {
+    await this.candidateRepository.update(id, { totalVotes: votes });
+  }
+
+  async findOne(id: string): Promise<Candidate> {
     const candidate = await this.candidateRepository.findOneBy({ id });
-    if (!candidate) {
-      throw new NotFoundException(`Candidate not found`);
-    }
+    if (!candidate) throw new NotFoundException(`Candidate not found`);
     return candidate;
   }
 
@@ -32,32 +34,19 @@ export class CandidateService {
     const category = await this.categoryRepository.findOne({
       where: { id: dto.categoryId },
     });
-    if (!category) {
-      throw new NotFoundException('Category not found');
-    }
+    if (!category) throw new NotFoundException('Category not found');
 
     const candidate = this.candidateRepository.create({
       id: dto.id,
       name: dto.name,
       category: category,
+      totalVotes: 0
     });
-
     return this.candidateRepository.save(candidate);
   }
 
-  async update(id: number, dto: UpdateCandidateDto): Promise<Candidate> {
-    const candidate = await this.candidateRepository.findOneBy({ id });
-    if (!candidate) {
-      throw new NotFoundException(`Candidate not found`);
-    } 
-    candidate.name = dto.name ?? candidate.name;
-    return this.candidateRepository.save(candidate);
-  }
-
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const result = await this.candidateRepository.delete(id);
-    if (result.affected === 0) {
-      throw new NotFoundException(`Candidate not found`);
-    }
+    if (result.affected === 0) throw new NotFoundException(`Candidate not found`);
   }
 }
