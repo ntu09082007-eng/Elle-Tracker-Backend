@@ -49,7 +49,7 @@ export class StatsController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const data = await this.statsService.timeToCatchUp(
-      Number(candidateId),
+      candidateId,
       Number(timeRange),
     );
     const ttlSeconds = this.calculateTTL();
