@@ -1,33 +1,20 @@
-import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { AppModule } from './app.module'; // DÒNG NÀY ĐANG THIẾU NÈ
+import * as dotenv from 'dotenv'; // Nạp dotenv để check log cho chuẩn
+
+dotenv.config();
 
 async function bootstrap() {
+  console.log('--- 🔍 ĐANG SOI HỆ THỐNG ---');
+  console.log('Link DB trong .env:', process.env.DB_URL ? '✅ ĐÃ THẤY' : '❌ KHÔNG THẤY (LỖI Ở FILE .ENV)');
+
   const app = await NestFactory.create(AppModule);
-
-  // CORS configuration
-  const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',')
-    : ['http://localhost:5173'];
-
-  app.enableCors({
-    origin: allowedOrigins,
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    credentials: true,
-  });
-
-  // Health check endpoint for Cloud Run
-  const httpAdapter = app.getHttpAdapter();
-  httpAdapter.get('/health', (req, res) => {
-    res.status(200).json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-    });
-  });
-
+  
+  // Giữ nguyên cấu hình của bro
+  app.enableCors();
+  
   const port = process.env.PORT || 3000;
-  await app.listen(port, '0.0.0.0');
-  console.log(`Application is running on: ${await app.getUrl()}`);
+  await app.listen(port);
+  console.log(`🚀 Server đang chạy tại: http://localhost:${port}`);
 }
 bootstrap();
