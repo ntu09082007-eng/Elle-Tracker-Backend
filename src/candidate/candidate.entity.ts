@@ -11,16 +11,19 @@ import {
 
 @Entity('candidates')
 export class Candidate {
-  @PrimaryColumn({ name: 'id', type: 'int' })
-  id: number;
+  @PrimaryColumn({ name: 'id', type: 'varchar' })
+  id: string;
 
   @Column({ name: 'category_id', type: 'varchar' })
   categoryId: string;
 
-  @Column({ name: 'name' })
+  @Column({ name: 'name', type: 'varchar' })
   name: string;
 
-  // Mối quan hệ với Category
+  // 🔥 CHỐT HẠ: Map chuẩn đét vào cột total_votes trong Supabase
+  @Column({ name: 'total_votes', type: 'int', default: 0 })
+  totalVotes: number;
+
   @ManyToOne(() => Category, (category) => category.candidates, {
     onDelete: 'CASCADE',
   })
