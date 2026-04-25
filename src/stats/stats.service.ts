@@ -152,7 +152,7 @@ export class StatsService {
 
   // Dự đoán thời gian để ứng viên bắt kịp ứng viên dẫn đầu của mỗi hạng mục
   // timeRange: tính theo phút
-  async timeToCatchUp(canId: number, timeRange: number): Promise<any> {
+  async timeToCatchUp(canId: string, timeRange: number): Promise<any> {
     if (timeRange < 10)
       throw new BadRequestException('timeRange must be at least 10 minutes');
 
