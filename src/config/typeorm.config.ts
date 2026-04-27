@@ -19,6 +19,7 @@ export default registerAs(
     extra: {
       max: 3,
       connectionTimeoutMillis: 5000,
+      ssl: { rejectUnauthorized: false }, // THÊM DÒNG NÀY
     },
   }),
 );
