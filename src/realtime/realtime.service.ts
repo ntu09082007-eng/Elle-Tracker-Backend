@@ -36,20 +36,20 @@ export class RealtimeService {
       const response = await firstValueFrom(
         this.httpService.get(this.apiUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': this.configService.get<string>('API_REFERER') ?? '',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...',
+            'Referer': 'https://events.elle.vn/elle-beauty-awards-2026/nhan-vat',
             'Cookie': this.configService.get<string>('API_COOKIE') ?? '',
+            // MẬT LỆNH QUAN TRỌNG ĐỂ ELLE NHẢ DỮ LIỆU BÀ THẤY TRONG HÌNH
+            'RSC': '1', 
+            'Next-Router-State-Tree': '%5B%5B%22%22%2C%7B%22children%22%3A%5B%22elle-beauty-awards-2026%22%2C%7B%22children%22%3A%5B%22nhan-vat%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%5D%7D%5D%7D%5D%7D%2Cnull%2Cnull%2Ctrue%5D%5D',
           },
         }),
       );
-      const html = response.data;
-
-      // LOG ĐỂ SOI LỖI: Bà nhìn log Render xem số này có > 0 không
-      this.logger.debug(`Đã tải trang: ${html.length} ký tự.`);
-
-      // REGEX MỚI: Hốt sạch cả có gạch chéo hoặc không có gạch chéo
-      const combinedRegex = /[\\"]+id[\\"]+:[\\"]+([a-f0-9]+)[\\"]+,.*?[\\"]+voteCount[\\"]+:(\d+)/g;
       
+      const html = String(response.data); // Lấy data thô, KHÔNG dùng JSON.stringify nữa bà nhé!
+
+      // Regex quét đúng cụm ID và voteCount bà thấy ở Response
+      const combinedRegex = /[\\"]+id[\\"]+:[\\"]+([a-f0-9]+)[\\"]+,.*?[\\"]+voteCount[\\"]+:(\d+)/g;
       const apiResults = new Map<string, number>();
       let match;
       let countFound = 0;
@@ -59,18 +59,17 @@ export class RealtimeService {
         countFound++;
       }
 
-      this.logger.log(`🔍 Tìm thấy ${countFound} người có số vote trên ELLE.`);
+      this.logger.log(`🔍 Quét được ${countFound} người từ API của ELLE.`);
 
       const allCandidates = await this.candidateRepository.find();
-
       const updatePromises = allCandidates.map(async (candidate) => {
-        const candIdStr = String(candidate.id);
-        const liveVotes = apiResults.get(candIdStr) ?? 0;
+        const liveVotes = apiResults.get(String(candidate.id)) ?? 0;
 
-        // BỎ LUÔN ĐIỀU KIỆN > 0 ĐỂ ÉP NÓ LƯU THỬ
+        // Cập nhật Database
         candidate.totalVotes = liveVotes;
         await this.candidateRepository.save(candidate);
 
+        // Lưu Snapshot
         await this.snapshotRepository.save({
           candidateId: candidate.id,
           categoryId: candidate.categoryId,
@@ -78,13 +77,15 @@ export class RealtimeService {
           recordedAt: new Date(),
         });
         
-        return { id: candidate.id, name: candidate.name, totalVotes: liveVotes };
+        return { name: candidate.name, votes: liveVotes };
       });
 
       const transformedData = await Promise.all(updatePromises);
       this.cachedData = { updatedAt: new Date().toISOString(), data: transformedData, status: 'Success' };
-
-      this.logger.log(`✅ Đã ghi nhận dữ liệu cho ${allCandidates.length} nhân vật.`);
+      
+      if (transformedData.length > 0) {
+        this.logger.log(`Mẫu thực tế: ${transformedData[0].name} -> ${transformedData[0].votes} votes`);
+      }
 
     } catch (error: any) {
       this.logger.error('❌ Lỗi:', error.message);
