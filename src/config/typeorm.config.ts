@@ -1,21 +1,28 @@
-// src/config/typeorm.config.ts
+import { registerAs } from '@nestjs/config';
+import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { join } from 'path';
+
 export default registerAs(
   'typeorm',
   (): TypeOrmModuleOptions => ({
     type: 'postgres',
-    // TÁCH NHỎ CÁC THÔNG SỐ ĐỂ ÉP NHẬN SSL
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '6543', 10),
-    username: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
+    url: process.env.DB_URL,
     autoLoadEntities: true,
     synchronize: true, 
-    ssl: { rejectUnauthorized: false }, 
+    
+    // Cấu hình SSL để "vượt rào" Supabase
+    ssl: {
+      rejectUnauthorized: false,
+    },
+
     extra: {
       max: 3,
       connectionTimeoutMillis: 5000,
-      ssl: { rejectUnauthorized: false },
+      ssl: {
+        rejectUnauthorized: false,
+      },
     },
+    migrations: [join(__dirname, '../..', 'migrations', '*.{js,ts}')],
+    migrationsRun: false,
   }),
 );
