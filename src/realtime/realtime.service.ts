@@ -28,13 +28,60 @@ export class RealtimeService {
 
   getCachedData() { return this.cachedData; }
 
-  @Cron(CronExpression.EVERY_10_SECONDS)
+  @Cron(CronExpression.EVERY_30_SECONDS) // TUI NỚI RA 30 GIÂY CHO ĐỠ BỊ SOI NHÉ BÀ
   async getVotes() {
     if (this.configService.get('ENABLE_CRON') !== 'true') return;
     
     try {
       const response = await firstValueFrom(
         this.httpService.get(this.apiUrl, {
+          headers: {
+            'accept': '*/*',
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+            'cookie': this.configService.get<string>('API_COOKIE') ?? '',
+            'rsc': '1', // Chỉ giữ cái này là mật lệnh chính
+          },
+        }),
+      );
+      
+      const html = String(response.data);
+      const combinedRegex = /[\\"]+id[\\"]+:[\\"]+([a-f0-9]+)[\\"]+,.*?[\\"]+voteCount[\\"]+:(\d+)/g;
+      
+      const apiResults = new Map<string, number>();
+      let match;
+      let foundCount = 0;
+
+      while ((match = combinedRegex.exec(html)) !== null) {
+        apiResults.set(match[1], parseInt(match[2]));
+        foundCount++;
+      }
+
+      if (foundCount === 0) {
+        this.logger.warn('⚠️ Vẫn không thấy số. Kiểm tra lại Cookie bà ơi!');
+        return;
+      }
+
+      const allCandidates = await this.candidateRepository.find();
+      for (const candidate of allCandidates) {
+        const liveVotes = apiResults.get(String(candidate.id)) ?? 0;
+        if (liveVotes > 0) {
+          candidate.totalVotes = liveVotes;
+          await this.candidateRepository.save(candidate);
+          await this.snapshotRepository.save({
+            candidateId: candidate.id,
+            categoryId: candidate.categoryId,
+            totalVotes: liveVotes,
+            recordedAt: new Date(),
+          });
+        }
+      }
+      this.logger.log(`✅ Hết lỗi rồi! Đã cập nhật ${foundCount} người.`);
+
+    } catch (error: any) {
+      this.logger.error(`❌ Vẫn lỗi ${error.response?.status || error.message}. Lấy Cookie mới nhất ở tab ẩn danh thử xem bà!`);
+    }
+  }
+}        this.httpService.get(this.apiUrl, {
           headers: {
             'accept': 'text/x-component',
             'accept-language': 'vi-VN,vi;q=0.9,en-US;q=0.8',
