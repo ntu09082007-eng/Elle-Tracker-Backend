@@ -55,7 +55,7 @@ export class RealtimeService {
       );
       const html = response.data;
 
-      // Regex bóc tách ID và Vote (Dùng 2 regex để tránh lỗi ELLE đổi thứ tự)
+      // Regex bóc tách ID và Vote
       const idRegex = /\\"id\\":\\"([a-f0-9]+)\\"/g;
       const voteRegex = /\\"voteCount\\":(\d+)/g;
       
@@ -71,19 +71,17 @@ export class RealtimeService {
         apiResults.set(id, votes[index] || 0);
       });
 
-      // Lấy danh sách Candidate từ DB
       const allCandidates = await this.candidateRepository.find({
         relations: ['category'],
       });
 
-      // Vừa khớp dữ liệu vừa cập nhật vào Database
       const updatePromises = allCandidates.map(async (candidate) => {
         const candIdStr = String(candidate.id);
         const liveVotes = apiResults.get(candIdStr) || 0;
         
-        // Chỉ lưu vào DB nếu số vote thực tế lớn hơn 0
+        // SỬA LỖI Ở ĐÂY: Dùng totalVotes thay vì total_votes
         if (liveVotes > 0) {
-            candidate.total_votes = liveVotes;
+            candidate.totalVotes = liveVotes; 
             await this.candidateRepository.save(candidate);
         }
 
