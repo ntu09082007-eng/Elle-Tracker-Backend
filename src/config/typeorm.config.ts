@@ -13,7 +13,7 @@ export default registerAs(
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     autoLoadEntities: true,
-    synchronize: false,
+    synchronize: true,
     migrations: [join(__dirname, '../..', 'migrations', '*.{js,ts}')],
     migrationsRun: false,
     extra: {
