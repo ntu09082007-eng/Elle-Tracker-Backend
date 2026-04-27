@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Candidate } from '../candidate/candidate.entity';
 import { Category } from '../category/category.entity';
-import { Snapshot } from '../snapshot/snapshot.entity'; // Đổi tên cho khớp Module
+import { Snapshot } from '../snapshot/snapshot.entity';
 
 @Injectable()
 export class RealtimeService {
@@ -26,10 +26,7 @@ export class RealtimeService {
     this.apiUrl = this.configService.get<string>('API_URL') ?? '';
   }
 
-  // HÀM NÀY PHẢI CÓ ĐỂ CONTROLLER HẾT BÁO LỖI ĐỎ!
-  getCachedData() {
-    return this.cachedData;
-  }
+  getCachedData() { return this.cachedData; }
 
   @Cron(CronExpression.EVERY_10_SECONDS)
   async getVotes() {
@@ -47,13 +44,22 @@ export class RealtimeService {
       );
       const html = response.data;
 
-      const combinedRegex = /\\"id\\":\\"([a-f0-9]+)\\",.*?\\"voteCount\\":(\d+)/g;
+      // LOG ĐỂ SOI LỖI: Bà nhìn log Render xem số này có > 0 không
+      this.logger.debug(`Đã tải trang: ${html.length} ký tự.`);
+
+      // REGEX MỚI: Hốt sạch cả có gạch chéo hoặc không có gạch chéo
+      const combinedRegex = /[\\"]+id[\\"]+:[\\"]+([a-f0-9]+)[\\"]+,.*?[\\"]+voteCount[\\"]+:(\d+)/g;
+      
       const apiResults = new Map<string, number>();
       let match;
+      let countFound = 0;
 
       while ((match = combinedRegex.exec(html)) !== null) {
         apiResults.set(match[1], parseInt(match[2]));
+        countFound++;
       }
+
+      this.logger.log(`🔍 Tìm thấy ${countFound} người có số vote trên ELLE.`);
 
       const allCandidates = await this.candidateRepository.find();
 
@@ -61,29 +67,27 @@ export class RealtimeService {
         const candIdStr = String(candidate.id);
         const liveVotes = apiResults.get(candIdStr) ?? 0;
 
-        if (liveVotes > 0) {
-          // 1. Cập nhật số tổng
-          candidate.totalVotes = liveVotes;
-          await this.candidateRepository.save(candidate);
+        // BỎ LUÔN ĐIỀU KIỆN > 0 ĐỂ ÉP NÓ LƯU THỬ
+        candidate.totalVotes = liveVotes;
+        await this.candidateRepository.save(candidate);
 
-          // 2. Lưu lịch sử vào bảng Snapshots
-          await this.snapshotRepository.save({
-            candidateId: candidate.id,
-            categoryId: candidate.categoryId,
-            totalVotes: liveVotes,
-            recordedAt: new Date(),
-          });
-        }
+        await this.snapshotRepository.save({
+          candidateId: candidate.id,
+          categoryId: candidate.categoryId,
+          totalVotes: liveVotes,
+          recordedAt: new Date(),
+        });
+        
         return { id: candidate.id, name: candidate.name, totalVotes: liveVotes };
       });
 
       const transformedData = await Promise.all(updatePromises);
       this.cachedData = { updatedAt: new Date().toISOString(), data: transformedData, status: 'Success' };
 
-      this.logger.log(`✅ Đã đồng bộ Vote và Snapshot cho ${allCandidates.length} nhân vật.`);
+      this.logger.log(`✅ Đã ghi nhận dữ liệu cho ${allCandidates.length} nhân vật.`);
 
     } catch (error: any) {
-      this.logger.error('❌ Lỗi Realtime:', error.message);
+      this.logger.error('❌ Lỗi:', error.message);
     }
   }
 }
