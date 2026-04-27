@@ -1,25 +1,19 @@
-import { registerAs } from '@nestjs/config';
-import { TypeOrmModuleOptions } from '@nestjs/typeorm';
-import { join } from 'path';
-
+// src/config/typeorm.config.ts
 export default registerAs(
   'typeorm',
   (): TypeOrmModuleOptions => ({
     type: 'postgres',
     url: process.env.DB_URL,
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '5432', 10),
-    username: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
     autoLoadEntities: true,
-    synchronize: true,
-    migrations: [join(__dirname, '../..', 'migrations', '*.{js,ts}')],
-    migrationsRun: false,
-    ssl: { rejectUnauthorized: false }, // THÊM DÒNG NÀY
+    synchronize: true, 
+    // ĐƯA SSL RA NGOÀI VÀ THỬ CÁCH VIẾT KHÁC
+    ssl: {
+      rejectUnauthorized: false
+    },
     extra: {
       max: 3,
       connectionTimeoutMillis: 5000,
+      // Đảm bảo trong này không còn dòng ssl nào khác để tránh xung đột
     },
   }),
 );
