@@ -1,4 +1,8 @@
+// src/main.ts
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // ÉP HỆ THỐNG BỎ QUA SSL NGAY LẬP TỨC
+
 import { NestFactory } from '@nestjs/core';
+// ... các dòng còn lại giữ nguyên
 import { AppModule } from './app.module'; // DÒNG NÀY ĐANG THIẾU NÈ
 import * as dotenv from 'dotenv'; // Nạp dotenv để check log cho chuẩn
 
