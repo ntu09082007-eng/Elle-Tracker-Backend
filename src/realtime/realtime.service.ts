@@ -8,8 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Candidate } from '../candidate/candidate.entity';
 import { Category } from '../category/category.entity';
-// CHÚ Ý: Bà kiểm tra xem file này nằm ở đâu, nếu folder là 'vote-snapshot' thì sửa lại tên folder cho đúng nhé
-import { VoteSnapshot } from '../snapshot/vote-snapshot.entity'; 
+import { Snapshot } from '../snapshot/snapshot.entity'; // Đổi tên cho khớp Module
 
 @Injectable()
 export class RealtimeService {
@@ -22,12 +21,12 @@ export class RealtimeService {
     private readonly configService: ConfigService,
     @InjectRepository(Category) private readonly categoryRepository: Repository<Category>,
     @InjectRepository(Candidate) private readonly candidateRepository: Repository<Candidate>,
-    @InjectRepository(VoteSnapshot) private readonly snapshotRepository: Repository<VoteSnapshot>,
+    @InjectRepository(Snapshot) private readonly snapshotRepository: Repository<Snapshot>,
   ) {
     this.apiUrl = this.configService.get<string>('API_URL') ?? '';
   }
 
-  // TUI ĐÃ THÊM LẠI HÀM NÀY CHO BÀ RỒI NÈ, HẾT LỖI ĐỎ Ở CONTROLLER NHÉ!
+  // HÀM NÀY PHẢI CÓ ĐỂ CONTROLLER HẾT BÁO LỖI ĐỎ!
   getCachedData() {
     return this.cachedData;
   }
@@ -63,9 +62,11 @@ export class RealtimeService {
         const liveVotes = apiResults.get(candIdStr) ?? 0;
 
         if (liveVotes > 0) {
+          // 1. Cập nhật số tổng
           candidate.totalVotes = liveVotes;
           await this.candidateRepository.save(candidate);
 
+          // 2. Lưu lịch sử vào bảng Snapshots
           await this.snapshotRepository.save({
             candidateId: candidate.id,
             categoryId: candidate.categoryId,
@@ -79,7 +80,7 @@ export class RealtimeService {
       const transformedData = await Promise.all(updatePromises);
       this.cachedData = { updatedAt: new Date().toISOString(), data: transformedData, status: 'Success' };
 
-      this.logger.log(`✅ Đồng bộ xong cho ${allCandidates.length} nhân vật.`);
+      this.logger.log(`✅ Đã đồng bộ Vote và Snapshot cho ${allCandidates.length} nhân vật.`);
 
     } catch (error: any) {
       this.logger.error('❌ Lỗi Realtime:', error.message);
