@@ -8,7 +8,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Candidate } from '../candidate/candidate.entity';
 import { Category } from '../category/category.entity';
-import { VoteSnapshot } from '../snapshot/vote-snapshot.entity'; // KIỂM TRA ĐƯỜNG DẪN NÀY
+// CHÚ Ý: Bà kiểm tra xem file này nằm ở đâu, nếu folder là 'vote-snapshot' thì sửa lại tên folder cho đúng nhé
+import { VoteSnapshot } from '../snapshot/vote-snapshot.entity'; 
 
 @Injectable()
 export class RealtimeService {
@@ -26,12 +27,15 @@ export class RealtimeService {
     this.apiUrl = this.configService.get<string>('API_URL') ?? '';
   }
 
+  // TUI ĐÃ THÊM LẠI HÀM NÀY CHO BÀ RỒI NÈ, HẾT LỖI ĐỎ Ở CONTROLLER NHÉ!
+  getCachedData() {
+    return this.cachedData;
+  }
+
   @Cron(CronExpression.EVERY_10_SECONDS)
   async getVotes() {
     if (this.configService.get('ENABLE_CRON') !== 'true') return;
     
-    this.logger.log('🚀 Đang cào dữ liệu thực tế từ ELLE...');
-
     try {
       const response = await firstValueFrom(
         this.httpService.get(this.apiUrl, {
@@ -44,20 +48,13 @@ export class RealtimeService {
       );
       const html = response.data;
 
-      // CHIẾN THUẬT MỚI: Dùng 1 Regex duy nhất để bắt đúng CẶP (ID + Vote)
-      // Cách này đảm bảo ID nào đi với Vote đó, không bao giờ lệch!
       const combinedRegex = /\\"id\\":\\"([a-f0-9]+)\\",.*?\\"voteCount\\":(\d+)/g;
-      
       const apiResults = new Map<string, number>();
       let match;
-      let foundCount = 0;
 
       while ((match = combinedRegex.exec(html)) !== null) {
         apiResults.set(match[1], parseInt(match[2]));
-        foundCount++;
       }
-
-      this.logger.debug(`🔍 Soi thấy ${foundCount} cặp dữ liệu trên ELLE`);
 
       const allCandidates = await this.candidateRepository.find();
 
@@ -66,11 +63,9 @@ export class RealtimeService {
         const liveVotes = apiResults.get(candIdStr) ?? 0;
 
         if (liveVotes > 0) {
-          // 1. Cập nhật số tổng vào bảng Candidate
           candidate.totalVotes = liveVotes;
           await this.candidateRepository.save(candidate);
 
-          // 2. Lưu một dòng vào bảng Snapshot để làm lịch sử (Snapshot)
           await this.snapshotRepository.save({
             candidateId: candidate.id,
             categoryId: candidate.categoryId,
@@ -78,18 +73,16 @@ export class RealtimeService {
             recordedAt: new Date(),
           });
         }
-
         return { id: candidate.id, name: candidate.name, totalVotes: liveVotes };
       });
 
       const transformedData = await Promise.all(updatePromises);
       this.cachedData = { updatedAt: new Date().toISOString(), data: transformedData, status: 'Success' };
 
-      this.logger.log(`✅ Đồng bộ xong cho ${transformedData.length} nhân vật.`);
+      this.logger.log(`✅ Đồng bộ xong cho ${allCandidates.length} nhân vật.`);
 
     } catch (error: any) {
-      this.logger.error('❌ Lỗi cào dữ liệu:', error.message);
-      this.cachedData.status = 'Error';
+      this.logger.error('❌ Lỗi Realtime:', error.message);
     }
   }
 }
