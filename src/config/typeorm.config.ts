@@ -16,10 +16,10 @@ export default registerAs(
     synchronize: true,
     migrations: [join(__dirname, '../..', 'migrations', '*.{js,ts}')],
     migrationsRun: false,
+    ssl: { rejectUnauthorized: false }, // THÊM DÒNG NÀY
     extra: {
       max: 3,
       connectionTimeoutMillis: 5000,
-      ssl: { rejectUnauthorized: false }, // THÊM DÒNG NÀY
     },
   }),
 );
