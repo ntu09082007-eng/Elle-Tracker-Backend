@@ -8,38 +8,27 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Candidate } from '../candidate/candidate.entity';
 import { Category } from '../category/category.entity';
+import { VoteSnapshot } from '../snapshot/vote-snapshot.entity'; // KIỂM TRA ĐƯỜNG DẪN NÀY
 
 @Injectable()
 export class RealtimeService {
   private readonly logger = new Logger('Realtime');
   private readonly apiUrl: string;
-
-  private cachedData: any = {
-    updatedAt: new Date().toISOString(),
-    data: [],
-    status: 'Fetching',
-  };
+  private cachedData: any = { updatedAt: new Date().toISOString(), data: [], status: 'Fetching' };
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    @InjectRepository(Category)
-    private readonly categoryRepository: Repository<Category>,
-    @InjectRepository(Candidate)
-    private readonly candidateRepository: Repository<Candidate>,
+    @InjectRepository(Category) private readonly categoryRepository: Repository<Category>,
+    @InjectRepository(Candidate) private readonly candidateRepository: Repository<Candidate>,
+    @InjectRepository(VoteSnapshot) private readonly snapshotRepository: Repository<VoteSnapshot>,
   ) {
     this.apiUrl = this.configService.get<string>('API_URL') ?? '';
   }
 
-  getCachedData() {
-    return this.cachedData;
-  }
-
   @Cron(CronExpression.EVERY_10_SECONDS)
   async getVotes() {
-    if (this.configService.get('ENABLE_CRON') !== 'true') {
-        return;
-    }
+    if (this.configService.get('ENABLE_CRON') !== 'true') return;
     
     this.logger.log('🚀 Đang cào dữ liệu thực tế từ ELLE...');
 
@@ -47,7 +36,7 @@ export class RealtimeService {
       const response = await firstValueFrom(
         this.httpService.get(this.apiUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': this.configService.get<string>('API_REFERER') ?? '',
             'Cookie': this.configService.get<string>('API_COOKIE') ?? '',
           },
@@ -55,55 +44,48 @@ export class RealtimeService {
       );
       const html = response.data;
 
-      // Regex bóc tách ID và Vote
-      const idRegex = /\\"id\\":\\"([a-f0-9]+)\\"/g;
-      const voteRegex = /\\"voteCount\\":(\d+)/g;
+      // CHIẾN THUẬT MỚI: Dùng 1 Regex duy nhất để bắt đúng CẶP (ID + Vote)
+      // Cách này đảm bảo ID nào đi với Vote đó, không bao giờ lệch!
+      const combinedRegex = /\\"id\\":\\"([a-f0-9]+)\\",.*?\\"voteCount\\":(\d+)/g;
       
-      const ids: string[] = [];
-      const votes: number[] = [];
-      let match;
-
-      while ((match = idRegex.exec(html)) !== null) ids.push(match[1]);
-      while ((match = voteRegex.exec(html)) !== null) votes.push(parseInt(match[1]));
-
       const apiResults = new Map<string, number>();
-      ids.forEach((id, index) => {
-        apiResults.set(id, votes[index] || 0);
-      });
+      let match;
+      let foundCount = 0;
 
-      const allCandidates = await this.candidateRepository.find({
-        relations: ['category'],
-      });
+      while ((match = combinedRegex.exec(html)) !== null) {
+        apiResults.set(match[1], parseInt(match[2]));
+        foundCount++;
+      }
+
+      this.logger.debug(`🔍 Soi thấy ${foundCount} cặp dữ liệu trên ELLE`);
+
+      const allCandidates = await this.candidateRepository.find();
 
       const updatePromises = allCandidates.map(async (candidate) => {
         const candIdStr = String(candidate.id);
-        const liveVotes = apiResults.get(candIdStr) || 0;
-        
-        // SỬA LỖI Ở ĐÂY: Dùng totalVotes thay vì total_votes
+        const liveVotes = apiResults.get(candIdStr) ?? 0;
+
         if (liveVotes > 0) {
-            candidate.totalVotes = liveVotes; 
-            await this.candidateRepository.save(candidate);
+          // 1. Cập nhật số tổng vào bảng Candidate
+          candidate.totalVotes = liveVotes;
+          await this.candidateRepository.save(candidate);
+
+          // 2. Lưu một dòng vào bảng Snapshot để làm lịch sử (Snapshot)
+          await this.snapshotRepository.save({
+            candidateId: candidate.id,
+            categoryId: candidate.categoryId,
+            totalVotes: liveVotes,
+            recordedAt: new Date(),
+          });
         }
 
-        return {
-          id: candidate.id,
-          name: candidate.name,
-          categoryId: candidate.categoryId,
-          categoryName: candidate.category?.name || 'ELLE',
-          totalVotes: liveVotes,
-        };
+        return { id: candidate.id, name: candidate.name, totalVotes: liveVotes };
       });
 
       const transformedData = await Promise.all(updatePromises);
+      this.cachedData = { updatedAt: new Date().toISOString(), data: transformedData, status: 'Success' };
 
-      this.cachedData = {
-        updatedAt: new Date().toISOString(),
-        data: transformedData,
-        status: 'Success',
-      };
-
-      this.logger.log(`✅ Đã cập nhật số vote cho ${transformedData.length} nhân vật.`);
-      return this.cachedData;
+      this.logger.log(`✅ Đồng bộ xong cho ${transformedData.length} nhân vật.`);
 
     } catch (error: any) {
       this.logger.error('❌ Lỗi cào dữ liệu:', error.message);
