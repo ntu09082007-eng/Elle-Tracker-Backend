@@ -1,40 +1,41 @@
-# Build stage
+# --- GIAI ĐOẠN 1: BUILD ---
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files để tận dụng cache của Docker
 COPY package*.json ./
 
-# Install dependencies
+# Cài đặt TẤT CẢ dependencies để build (bao gồm cả devDependencies như nest cli, typescript)
 RUN npm install
 
-# Copy source code
+# Copy toàn bộ code vào
 COPY . .
 
-RUN rm -f tsconfig.build.tsbuildinfo && \
-    rm -rf dist && \
-    npx tsc -p tsconfig.build.json && \
-    ls -la dist
+# Build dự án (lệnh này sẽ tự gọi nest build hoặc tsc tùy package.json của bà)
+RUN npm run build
 
-# Build application
-RUN npx tsc -p tsconfig.build.json
-
-RUN echo "=== KIỂM TRA THƯ MỤC GỐC ===" && ls -la
-RUN echo "=== KIỂM TRA THƯ MỤC DIST (NẾU CÓ) ===" && ls -la dist || echo "Khong tim thay thu muc dist"
-# ------------------------------
-
-# Production stage
+# --- GIAI ĐOẠN 2: RUN ---
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
+# Cài dumb-init để quản lý tiến trình tốt hơn trên Render/Docker
 RUN apk add --no-cache dumb-init
 
-# Copy built application
+# Chỉ copy những thứ cần thiết từ stage builder sang để giảm dung lượng ảnh
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
+
+# Mở port 3000
+EXPOSE 3000
+
+# Dùng dumb-init để chạy cho ổn định
+ENTRYPOINT ["dumb-init", "--"]
+
+# Chạy file main trong thư mục dist
+CMD ["node", "dist/main"]COPY package*.json ./
 
 # Install production dependencies only
 RUN npm install --omit=dev
