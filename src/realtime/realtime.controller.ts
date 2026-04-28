@@ -1,13 +1,13 @@
-import { Controller, Get, Header } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { RealtimeService } from './realtime.service';
 
-@Controller('realtime')
+@Controller('realtime') // <--- CHỈ ĐỂ DUY NHẤT CHỮ 'realtime'
 export class RealtimeController {
   constructor(private readonly realtimeService: RealtimeService) {}
 
-  @Get()
-  @Header('Cache-Control', 'public, max-age=4')
-  async getVotes() {
-    return await this.realtimeService.getCachedData();
+  @Get() 
+  async getLiveVotes() {
+    // Gọi đúng tên hàm lấy dữ liệu trong service của bà
+    return this.realtimeService.getRealtimeData(); 
   }
 }
