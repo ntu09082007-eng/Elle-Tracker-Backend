@@ -7,7 +7,7 @@ export class RealtimeController {
 
   @Get()
   async getVotes() {
-    // Gọi đúng hàm getCachedData
+    // Đổi thành getCachedData cho khớp với Service của bà!
     return this.realtimeService.getCachedData();
   }
 }
