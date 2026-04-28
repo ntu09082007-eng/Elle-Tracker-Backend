@@ -23,8 +23,8 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
   
-  console.log('--- 🔍 HỆ THỐNG ĐÃ SẴN SÀNG ---');
+  console.log('--- 🔍 HỆ THỐNG ĐÃ SẠCH SẼ ---');
   console.log(`🚀 Link API: https://elle-tracker-backend.onrender.com/realtime`);
 }
 
-bootstrap(); // <--- CHỈ ĐỂ MỘT CÁI NÀY THÔI
+bootstrap(); // ĐÚNG 1 CÁI NÀY LÀ ĐỦ RỒI NHA!
